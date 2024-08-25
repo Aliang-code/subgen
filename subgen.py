@@ -225,7 +225,7 @@ def appendLine(result):
 
 def has_image_extension(file_path):
     valid_extensions = ['.rgb', '.gif', '.pbm', '.pgm', '.ppm', '.tiff', '.rast', '.xbm', '.jpg', '.jpeg', '.bmp', '.png', '.webp', '.exr', '.bif'] # taken from the extensions detected by the imghdr module & added Emby's '.bif' files
-    
+
     if os.path.exists(file_path):
         file_extension = os.path.splitext(file_path)[1].lower()
         return file_extension in valid_extensions
@@ -463,20 +463,20 @@ async def asr(
 
         args = {}
         args['progress_callback'] = progress
-        
+
         if not encode:
             args['audio'] = np.frombuffer(audio_file.file.read(), np.int16).flatten().astype(np.float32) / 32768.0
             args['input_sr'] = 16000
         else:
             args['audio'] = audio_file.file.read()
-            
+
         if model_prompt:
             args['initial_prompt'] = greetings_translations.get(language, '') or custom_model_prompt
         if custom_regroup:
             args['regroup'] = custom_regroup
-            
+
         args.update(kwargs)
-        
+
         result = model.transcribe_stable(task=task, language=language, **args)
         appendLine(result)
         elapsed_time = time.time() - start_time
@@ -504,14 +504,14 @@ async def detect_language(
         audio_file: UploadFile = File(...),
         #encode: bool = Query(default=True, description="Encode audio first through ffmpeg") # This is always false from Bazarr
         detect_lang_length: int = Query(default=30, description="Detect language on the first X seconds of the file")
-):    
+):
     detected_language = ""  # Initialize with an empty string
     language_code = ""  # Initialize with an empty string
     if force_detected_language_to:
             language = force_detected_language_to
             logging.info(f"ENV FORCE_DETECTED_LANGUAGE_TO is set: Forcing detected language to {force_detected_language_to}")
     if int(detect_lang_length) != 30:
-        global detect_language_length 
+        global detect_language_length
         detect_language_length = detect_lang_length
     if int(detect_language_length) != 30:
         logging.info(f"Detect language is set to detect on the first {detect_language_length} seconds of the audio.")
@@ -577,6 +577,9 @@ def gen_subtitles(file_path: str, transcription_type: str, force_language=None) 
     """
 
     try:
+        #keep skip
+        if skip_gen_subtitles(file_path):
+            return
         logging.info(f"Added {os.path.basename(file_path)} for transcription.")
         logging.info(f"Transcribing file: {os.path.basename(file_path)}")
 
@@ -591,12 +594,12 @@ def gen_subtitles(file_path: str, transcription_type: str, force_language=None) 
 
         args = {}
         args['progress_callback'] = progress
-            
+
         if model_prompt:
             args['initial_prompt'] = greetings_translations.get(force_language, '') or custom_model_prompt
         if custom_regroup:
             args['regroup'] = custom_regroup
-            
+
         args.update(kwargs)
 
         result = model.transcribe_stable(file_path, language=force_language, task=transcription_type, **args)
@@ -620,13 +623,7 @@ def gen_subtitles(file_path: str, transcription_type: str, force_language=None) 
     finally:
         delete_model()
 
-def gen_subtitles_queue(file_path: str, transcription_type: str, force_language=None) -> None:
-    global task_queue
-    
-    if not has_audio(file_path):
-        logging.debug(f"{file_path} doesn't have any audio to transcribe!")
-        return
-    
+def skip_gen_subtitles(file_path: str, force_language=None):
     message = None
 
     # Check if force_language is set
@@ -648,10 +645,22 @@ def gen_subtitles_queue(file_path: str, transcription_type: str, force_language=
             message = f"{file_path} already has a SDH subtitle created for this, skipping it"
         elif os.path.exists(get_file_name_without_extension(file_path) + '.lrc'):
             message = f"{file_path} already has a LRC created for this, skipping it"
-        
+
 
     if message:
         logging.debug(message)
+        return True
+    else:
+        return False
+
+def gen_subtitles_queue(file_path: str, transcription_type: str, force_language=None) -> None:
+    global task_queue
+
+    if not has_audio(file_path):
+        logging.debug(f"{file_path} doesn't have any audio to transcribe!")
+        return
+
+    if skip_gen_subtitles(file_path):
         return
     
     task = {
