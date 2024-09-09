@@ -637,6 +637,8 @@ def skip_gen_subtitles(file_path: str, force_language=None):
     else:
         if has_subtitle_language(file_path, skipifinternalsublang):
             message = f"{file_path} already has an internal subtitle we want, skipping generation"
+        if has_audio_language(file_path, skipifinternalsublang):
+            message = f"{file_path} already has audio language we want, skipping it"
         elif os.path.exists(get_file_name_without_extension(file_path) + subextension):
             message = f"{file_path} already has a subtitle created for this, skipping it"
         elif skipifexternalsub and (os.path.exists(get_file_name_without_extension(file_path) + f".{namesublang}.srt") or os.path.exists(get_file_name_without_extension(file_path) + f".{namesublang}.ass")):
@@ -687,7 +689,21 @@ def has_subtitle_language(video_file, target_language):
     except Exception as e:
         logging.info(f"An error occurred: {e}")
         return False
-    
+
+def has_audio_language(video_file, target_language):
+    try:
+        with av.open(video_file) as container:
+            subtitle_stream = next((stream for stream in container.streams if stream.type == 'audio' and 'language' in stream.metadata and stream.metadata['language'] == target_language), None)
+
+            if subtitle_stream:
+                logging.debug(f"Audio in '{target_language}' language found in the video.")
+                return True
+            else:
+                logging.debug(f"No Audio in '{target_language}' language found in the video.")
+    except Exception as e:
+        logging.info(f"An error occurred: {e}")
+        return False
+
 def get_plex_file_name(itemid: str, server_ip: str, plex_token: str) -> str:
     """Gets the full path to a file from the Plex server.
 
@@ -814,7 +830,7 @@ def get_jellyfin_admin(users):
     for user in users:
         if user["Policy"]["IsAdministrator"]:
             return user["Id"]
-            
+
     raise Exception("Unable to find administrator user in Jellyfin")
 
 def has_audio(file_path):
@@ -873,7 +889,7 @@ def transcribe_existing(transcribe_folders, forceLanguage=None):
     # if the path specified was actually a single file and not a folder, process it
     if os.path.isfile(path):
         if has_audio(path):
-            gen_subtitles_queue(path_mapping(path), transcribe_or_translate, forceLanguage) 
+            gen_subtitles_queue(path_mapping(path), transcribe_or_translate, forceLanguage)
      # Set up the observer to watch for new files
     if monitor:
         observer = Observer()
